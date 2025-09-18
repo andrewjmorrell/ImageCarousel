@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.lazy.items
 import com.example.imagecarousel.domain.Image
-import com.example.imagecarousel.presentation.models.CanvasImage
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,7 +60,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsState()
 
     var canvasBounds by remember { mutableStateOf(IntRect(0, 0, 0, 0)) }
-    val canvasImages = remember { mutableStateListOf<CanvasImage>() }
+    val canvasImages = viewModel.canvasImages
 
     // State for cross-composable drag from carousel
     var isDragging by remember { mutableStateOf(false) }
@@ -119,14 +118,23 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                             // Render all placed images
                             canvasImages.forEach { item ->
                                 // Per-item gesture state
-                                var frameOffset by remember(item.id) { mutableStateOf(item.offset) }   // frame top-left on canvas
-                                var userScale by remember(item.id) { mutableStateOf(item.userScale) }  // ≥ 1f
-                                var imageTranslation by remember(item.id) { mutableStateOf(Offset.Zero) } // pan within frame
+                                // Per-item gesture state with Compose state-backed vars
+                                var frameOffset by remember(item.id) { mutableStateOf(item.offset) }
+                                var userScale by remember(item.id) { mutableStateOf(item.userScale) }
+                                var imageTranslation by remember(item.id) { mutableStateOf(item.imageTranslation) }
 
-                                // Persist back to model
-                                LaunchedEffect(frameOffset, userScale, imageTranslation) {
-                                    item.offset = frameOffset
-                                    item.userScale = userScale
+                                LaunchedEffect(item.offset) { frameOffset = item.offset }
+                                LaunchedEffect(item.userScale) { userScale = item.userScale }
+                                LaunchedEffect(item.imageTranslation) { imageTranslation = item.imageTranslation }
+
+                                LaunchedEffect(frameOffset) {
+                                    viewModel.updateOffset(item.id, offset = frameOffset)
+                                }
+                                LaunchedEffect(userScale) {
+                                    viewModel.updateUserScale(item.id, userScale)
+                                }
+                                LaunchedEffect(imageTranslation) {
+                                    viewModel.updateImageTranslation(item.id, imageTranslation)
                                 }
 
                                 // --- Frame sizing: match bitmap aspect, fit inside canvas, start smaller (no upscaling > 1:1) ---
@@ -216,7 +224,6 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                             }
                                         }
                                 ) {
-                                    // Draw the image to fill the frame; apply user scale + pan
                                     Image(
                                         bitmap = item.bitmap.asImageBitmap(),
                                         contentDescription = null,
@@ -240,9 +247,17 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                             }
                         }
 
+                        Text(
+                            "Long press to drag image",
+                            color = Color.Black,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+
                         // Carousel
                         Carousel(
-                            image = state.images,
+                            images = state.images,
                             onStartDrag = { bmp, startOffset ->
                                 dragBitmap = bmp
                                 dragOffset = startOffset
@@ -271,8 +286,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     val desiredTopLeftY = localY - frameHpx / 2f
                                     val clampedX = desiredTopLeftX.coerceIn(0f, (canvasW - frameWpx).coerceAtLeast(0f))
                                     val clampedY = desiredTopLeftY.coerceIn(0f, (canvasH - frameHpx).coerceAtLeast(0f))
-                                    canvasImages += CanvasImage(
-                                        bitmap = bmp,
+                                    viewModel.addCanvasImage(
+                                        bm = bmp,
                                         offset = Offset(clampedX, clampedY)
                                     )
                                 }
@@ -314,7 +329,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
 @Composable
 private fun Carousel(
-    image: List<Image>,
+    images: List<Image>,
     onStartDrag: (bitmap: Bitmap, startOffsetInWindow: Offset) -> Unit,
     onDrag: (bitmap: Bitmap, pointerInWindow: Offset) -> Unit,
     onEndDrag: () -> Unit,
@@ -329,29 +344,29 @@ private fun Carousel(
                 .height(110.dp)
                 .padding(horizontal = 12.dp)
         ) {
-            items(image) { bmp ->
+            items(images) { image ->
                 var itemOriginInWindow by remember { mutableStateOf(Offset.Zero) }
                 val thumbHeight = 96.dp
-                val aspect = (bmp.bitmap?.width ?: 1).toFloat() / (bmp.bitmap?.height ?: 1).toFloat()
+                val aspect = (image.bitmap?.width ?: 1).toFloat() / (image.bitmap?.height ?: 1).toFloat()
                 Box(
                     modifier = Modifier
                         .padding(end = 12.dp)
                         .height(thumbHeight)
                         .aspectRatio(aspect, matchHeightConstraintsFirst = true)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF22262B))
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(Color(0xFFFFFFFF))
                         .onGloballyPositioned { coords ->
                             itemOriginInWindow = coords.positionInWindow()
                         }
-                        .pointerInput(bmp) {
-                            detectDragGestures(
+                        .pointerInput(image) {
+                            detectDragGesturesAfterLongPress(
                                 onDragStart = { start ->
                                     lastPointerInWindow = itemOriginInWindow + start
-                                    onStartDrag(bmp.bitmap!!, lastPointerInWindow)
+                                    onStartDrag(image.bitmap!!, lastPointerInWindow)
                                 },
                                 onDrag = { change, _ ->
                                     lastPointerInWindow = itemOriginInWindow + change.position
-                                    onDrag(bmp.bitmap!!, lastPointerInWindow)
+                                    onDrag(image.bitmap!!, lastPointerInWindow)
                                 },
                                 onDragEnd = { onEndDrag() },
                                 onDragCancel = { onEndDrag() }
@@ -359,7 +374,7 @@ private fun Carousel(
                         }
                 ) {
                     Image(
-                        bitmap = bmp.bitmap!!.asImageBitmap(),
+                        bitmap = image.bitmap!!.asImageBitmap(),
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize()
