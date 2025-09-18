@@ -67,6 +67,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
     var dragBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
 
+    var rootOriginInWindow by remember { mutableStateOf(Offset.Zero) }
+
     val density = LocalDensity.current
 
     LaunchedEffect(Unit) { viewModel.loadImages() }
@@ -104,9 +106,10 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                 .padding(horizontal = 2.dp)
                                 .weight(1f)
                                 .background(Color(0xFF111315))
-                                .onGloballyPositioned { layoutCoordinates ->
-                                    val pos = layoutCoordinates.positionInWindow()
-                                    val size = layoutCoordinates.size
+                                .onGloballyPositioned { coords ->
+                                    rootOriginInWindow = coords.positionInWindow()
+                                    val pos = coords.positionInWindow()
+                                    val size = coords.size
                                     canvasBounds = IntRect(
                                         pos.x.roundToInt(),
                                         pos.y.roundToInt(),
@@ -311,10 +314,13 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .offset {
-                                    // Preview slightly above finger; offset uses half of preview size
+                                    val previewWidthPx = previewWidthDp.toPx(density)
+                                    val previewHeightPx = previewHeight.toPx(density)
+                                    val localX = dragOffset.x - rootOriginInWindow.x
+                                    val localY = dragOffset.y - rootOriginInWindow.y
                                     IntOffset(
-                                        (dragOffset.x - (previewWidthDp.toPx(density) / 2f)).roundToInt(),
-                                        (dragOffset.y - (previewHeight.toPx(density) / 2f)).roundToInt()
+                                        (localX - previewWidthPx / 2f).roundToInt(),
+                                        (localY - previewHeightPx / 2f).roundToInt()
                                     )
                                 }
                                 .size(previewWidthDp, previewHeight)
