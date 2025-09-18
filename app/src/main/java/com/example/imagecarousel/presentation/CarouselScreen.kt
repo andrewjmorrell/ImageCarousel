@@ -5,12 +5,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,9 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,25 +40,18 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import java.util.UUID
 import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntOffset
 import com.example.imagecarousel.domain.Image
 import kotlin.math.roundToInt
+import com.example.imagecarousel.presentation.models.CanvasImage
 
-
-data class PlacedImage(
-    val id: String = UUID.randomUUID().toString(),
-    val bitmap: Bitmap,
-    var offset: Offset = Offset.Zero, // position within the canvas (top-left based)
-    var scale: Float = 1f            // maintain aspect ratio by uniform scaling
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,13 +63,12 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
     var canvasBounds by remember { mutableStateOf(IntRect(0, 0, 0, 0)) }
 
-    // State: the items placed on the canvas
-    val placed = remember { mutableStateListOf<PlacedImage>() }
+    val canvasImages = remember { mutableStateListOf<CanvasImage>() }
 
     // State for cross-composable drag from carousel
     var isDragging by remember { mutableStateOf(false) }
     var dragBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var dragOffset by remember { mutableStateOf(Offset.Zero) } // in root/screen coords
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
 
     val density = LocalDensity.current
 
@@ -130,56 +117,123 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     )
                                 }
                         ) {
-                            // Render all placed image; each is draggable & pinch-zoomable
-                            placed.forEach { item ->
-                                var itemOffset by remember(item.id) { mutableStateOf(item.offset) }
-                                var itemScale by remember(item.id) { mutableStateOf(item.scale) }
+                            // Render all placed images; each is draggable & pinch-zoomable within a fixed frame
+                            canvasImages.forEach { item ->
+                                // Local state for per-item gesture
+                                var frameOffset by remember(item.id) { mutableStateOf(item.offset) }     // where the FRAME sits on the canvas
+                                var userScale by remember(item.id) { mutableStateOf(item.userScale) }    // user zoom (>= 1f)
+                                var imageTranslation by remember(item.id) { mutableStateOf(Offset.Zero) } // pan inside the frame, relative to center
 
-                                // Keep backing data updated (optional, if you need persistence)
-                                LaunchedEffect(itemOffset, itemScale) {
-                                    item.offset = itemOffset
-                                    item.scale = itemScale
+                                // Persist back to the backing data class (optional persistence)
+                                LaunchedEffect(frameOffset, userScale, imageTranslation) {
+                                    item.offset = frameOffset
+                                    item.userScale = userScale
                                 }
 
-                                // Gesture: transform (pan inside canvas + pinch to zoom)
+                                // Frame should match the image's aspect and fit inside the canvas (no upscaling beyond 1:1)
+                                val densityLocal = LocalDensity.current
+                                val bmpW = item.bitmap.width.toFloat()
+                                val bmpH = item.bitmap.height.toFloat()
+                                val canvasW = canvasBounds.width.toFloat()
+                                val canvasH = canvasBounds.height.toFloat()
+                                val scaleToFitCanvas = minOf(canvasW / bmpW, canvasH / bmpH, 1f)
+                                val frameWpx = (bmpW * scaleToFitCanvas).coerceAtLeast(1f)
+                                val frameHpx = (bmpH * scaleToFitCanvas).coerceAtLeast(1f)
+                                val frameWdp = with(densityLocal) { frameWpx.toDp() }
+                                val frameHdp = with(densityLocal) { frameHpx.toDp() }
+
+                                // Base scale: content fills the frame (due to ContentScale.Crop)
+                                val baseScale = 1f
+
+                                // Current scale of the drawn content
+                                val currentScale = (baseScale * userScale).coerceAtLeast(1f).coerceAtMost(8f)
+
+                                // Clamp helper that depends on the *given* scale so we can clamp during gesture updates
+                                fun clampPanWithScale(p: Offset, scale: Float): Offset {
+                                    val contentW = frameWpx * scale
+                                    val contentH = frameHpx * scale
+                                    val maxPanX = maxOf(0f, (contentW - frameWpx) / 2f)
+                                    val maxPanY = maxOf(0f, (contentH - frameHpx) / 2f)
+                                    return Offset(
+                                        x = p.x.coerceIn(-maxPanX, maxPanX),
+                                        y = p.y.coerceIn(-maxPanY, maxPanY)
+                                    )
+                                }
+
+                                // Actively clamp any existing translation using the *current* scale
+                                imageTranslation = clampPanWithScale(imageTranslation, currentScale)
+
+                                // Gesture for zoom/pan inside the fixed frame
                                 Box(
                                     modifier = Modifier
-                                        .wrapContentSize()
+                                        .size(frameWdp, frameHdp) // frame matches image aspect, fits in canvas
                                         .offset {
-                                            IntOffset(
-                                                x = itemOffset.x.roundToInt(),
-                                                y = itemOffset.y.roundToInt()
+                                            IntOffset(frameOffset.x.roundToInt(), frameOffset.y.roundToInt())
+                                        }
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black)
+                                        .pointerInput("frameDrag-${item.id}") {
+                                            var dragFrame = false
+                                            detectDragGestures(
+                                                onDragStart = { start ->
+                                                    // Start is in frame-local coords (0..frameWpx, 0..frameHpx)
+                                                    val borderPx = with(densityLocal) { 16.dp.toPx() }
+                                                    dragFrame = start.x <= borderPx || start.y <= borderPx ||
+                                                                start.x >= frameWpx - borderPx || start.y >= frameHpx - borderPx
+                                                },
+                                                onDrag = { change, dragAmount ->
+                                                    if (dragFrame) {
+                                                        val new = frameOffset + dragAmount
+                                                        val maxX = (canvasW - frameWpx).coerceAtLeast(0f)
+                                                        val maxY = (canvasH - frameHpx).coerceAtLeast(0f)
+                                                        frameOffset = Offset(new.x.coerceIn(0f, maxX), new.y.coerceIn(0f, maxY))
+                                                        change.consume()
+                                                    }
+                                                },
+                                                onDragEnd = { dragFrame = false },
+                                                onDragCancel = { dragFrame = false }
                                             )
                                         }
                                         .pointerInput(item.id) {
-                                            detectTransformGestures { _, pan, zoom, _ ->
-                                                // Pan: move within canvas (clamp roughly to bounds)
-                                                val newOffset = itemOffset + pan
-                                                // Simple clamping to keep image roughly inside canvas:
-                                                // (We don't know rendered size; a simple safe margin helps)
-                                                val marginPx = with(density) { 24.dp.toPx() }
-                                                val minX = -marginPx
-                                                val minY = -marginPx
-                                                val maxX = (canvasBounds.width - marginPx)
-                                                val maxY = (canvasBounds.height - marginPx)
-                                                itemOffset = Offset(
-                                                    x = newOffset.x.coerceIn(minX, maxX),
-                                                    y = newOffset.y.coerceIn(minY, maxY)
+                                            detectTransformGestures { centroid, pan, zoom, _ ->
+                                                // Compute proposed new user scale
+                                                val oldUser = userScale
+                                                val newUser = (oldUser * zoom).coerceIn(1f, 8f) // don't go below fit-to-frame
+                                                val k = newUser / oldUser
+
+                                                // Frame center in local (frame) coords
+                                                val frameCenter = Offset(frameWpx / 2f, frameHpx / 2f)
+
+                                                // Adjust imageTranslation so the point under the fingers (centroid) stays put during scaling
+                                                // T' = k*T - (k - 1) * (a - frameCenter) + pan
+                                                val newTranslation = Offset(
+                                                    x = k * imageTranslation.x - (k - 1f) * (centroid.x - frameCenter.x) + pan.x,
+                                                    y = k * imageTranslation.y - (k - 1f) * (centroid.y - frameCenter.y) + pan.y
                                                 )
 
-                                                // Zoom (uniform scale keeps aspect ratio)
-                                                val newScale = (itemScale * zoom).coerceIn(0.3f, 5f)
-                                                itemScale = newScale
+                                                val newCurrentScale = (baseScale * newUser).coerceAtLeast(1f).coerceAtMost(8f)
+                                                imageTranslation = clampPanWithScale(newTranslation, newCurrentScale)
+                                                userScale = newUser
                                             }
                                         }
                                 ) {
+                                    // Draw the image centered; apply current scale and inner pan.
                                     Image(
                                         bitmap = item.bitmap.asImageBitmap(),
                                         contentDescription = null,
+                                        contentScale = ContentScale.Crop,
                                         modifier = Modifier
+                                            .fillMaxSize()
                                             .graphicsLayer {
-                                                scaleX = itemScale
-                                                scaleY = itemScale
+                                                // Scale the filled content and keep it centered; pan within bounds
+                                                val drawnW = frameWpx * currentScale
+                                                val drawnH = frameHpx * currentScale
+                                                val centerX = (frameWpx - drawnW) / 2f
+                                                val centerY = (frameHpx - drawnH) / 2f
+                                                translationX = centerX + imageTranslation.x
+                                                translationY = centerY + imageTranslation.y
+                                                scaleX = currentScale
+                                                scaleY = currentScale
                                             }
                                     )
                                 }
@@ -202,9 +256,18 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     // Convert drop point from screen coords to canvas-local coords
                                     val localX = dragOffset.x - canvasBounds.left
                                     val localY = dragOffset.y - canvasBounds.top
-                                    placed += PlacedImage(
+                                    val bmpW = bmp.width.toFloat()
+                                    val bmpH = bmp.height.toFloat()
+                                    val canvasW = canvasBounds.width.toFloat()
+                                    val canvasH = canvasBounds.height.toFloat()
+                                    val scaleToFitCanvas = minOf(canvasW / bmpW, canvasH / bmpH, 1f)
+                                    val frameWpx = (bmpW * scaleToFitCanvas).coerceAtLeast(1f)
+                                    val frameHpx = (bmpH * scaleToFitCanvas).coerceAtLeast(1f)
+                                    val clampedX = (localX).coerceIn(0f, (canvasW - frameWpx).coerceAtLeast(0f))
+                                    val clampedY = (localY).coerceIn(0f, (canvasH - frameHpx).coerceAtLeast(0f))
+                                    canvasImages += CanvasImage(
                                         bitmap = bmp,
-                                        offset = Offset(localX, localY)
+                                        offset = Offset(clampedX, clampedY)
                                     )
                                 }
                                 isDragging = false
