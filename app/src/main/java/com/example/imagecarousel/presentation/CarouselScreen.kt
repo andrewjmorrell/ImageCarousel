@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import java.util.UUID
 import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -184,7 +185,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                 }
                             }
                         }
-                        
+
                         Carousel(
                             image = state.images,
                             onStartDrag = { bmp, startOffset ->
