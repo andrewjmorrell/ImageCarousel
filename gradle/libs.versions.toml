@@ -1,4 +1,5 @@
 [versions]
+accompanist-zoom = "0.37.3"
 agp = "8.10.0"
 animation = "1.8.3"
 coil-compose = "2.7.0"
@@ -30,6 +31,7 @@ ui-tooling-preview = "1.6.4"
 ads-mobile-sdk = "0.17.0-alpha02"
 
 [libraries]
+accompanist-zoom = { module = "com.google.accompanist:accompanist-zoom", version.ref = "accompanist-zoom" }
 androidx-animation = { module = "androidx.compose.animation:animation", version.ref = "animation" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
 androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hilt-navigation-compose" }
