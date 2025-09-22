@@ -49,8 +49,13 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.res.stringResource
 import com.example.imagecarousel.domain.Image
 import kotlin.math.roundToInt
+import com.example.imagecarousel.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,9 +80,14 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Image Carousel") },
-                modifier = Modifier.height(48.dp) // compact, below status bar by default
+            CenterAlignedTopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.primary,
+                ),
+                title = {
+                    Text(text = stringResource(R.string.app_name))
+                }
             )
         }
     ) { paddingValues ->
