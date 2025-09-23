@@ -32,6 +32,7 @@ import com.example.imagecarousel.R
 import com.example.imagecarousel.domain.Image
 import kotlin.math.roundToInt
 
+
 @Composable
 fun Carousel(
     images: List<Image>,

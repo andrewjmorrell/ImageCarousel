@@ -69,6 +69,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
     var dragBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var draggingCanvasItemId by remember { mutableStateOf<String?>(null) }
+    var dragPreviewWidthDp by remember { mutableStateOf<androidx.compose.ui.unit.Dp?>(null) }
+    var dragPreviewHeightDp by remember { mutableStateOf<androidx.compose.ui.unit.Dp?>(null) }
 
     var rootOriginInWindow by remember { mutableStateOf(Offset.Zero) }
 
@@ -211,6 +213,9 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                                     // absolute pointer in window at gesture start
                                                     val startInWindow = frameOriginInWindow + start
                                                     dragOffset = startInWindow
+                                                    // Make the preview match the on-canvas frame size
+                                                    dragPreviewWidthDp = with(densityLocal) { frameWpx.toDp() }
+                                                    dragPreviewHeightDp = with(densityLocal) { frameHpx.toDp() }
                                                 },
                                                 onDrag = { change, _ ->
                                                     // absolute pointer in window during drag
@@ -254,6 +259,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                                     draggingCanvasItemId = null
                                                     isDragging = false
                                                     dragBitmap = null
+                                                    dragPreviewWidthDp = null
+                                                    dragPreviewHeightDp = null
                                                 }
                                             )
                                         }
@@ -339,6 +346,17 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                 dragBitmap = bmp
                                 dragOffset = startOffset
                                 isDragging = true
+                                // Preview should match the eventual frame size on the canvas
+                                val bmpW = bmp.width.toFloat()
+                                val bmpH = bmp.height.toFloat()
+                                val canvasW = canvasBounds.width.toFloat()
+                                val canvasH = canvasBounds.height.toFloat()
+                                val initialFitFraction = 0.6f
+                                val scaleToFitCanvas = minOf(canvasW / bmpW, canvasH / bmpH, 1f) * initialFitFraction
+                                val frameWpx = (bmpW * scaleToFitCanvas).coerceAtLeast(1f)
+                                val frameHpx = (bmpH * scaleToFitCanvas).coerceAtLeast(1f)
+                                dragPreviewWidthDp = with(density) { frameWpx.toDp() }
+                                dragPreviewHeightDp = with(density) { frameHpx.toDp() }
                             },
                             onDrag = { _, pointerInWindow ->
                                 dragOffset = pointerInWindow
@@ -370,6 +388,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                 }
                                 isDragging = false
                                 dragBitmap = null
+                                dragPreviewWidthDp = null
+                                dragPreviewHeightDp = null
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -379,9 +399,16 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
                     // Drag preview overlay (follows the finger)
                     if (isDragging && dragBitmap != null) {
-                        val previewHeight = dimensionResource(id = R.dimen.drag_preview_height)
-                        val aspect = dragBitmap!!.width.toFloat() / dragBitmap!!.height.toFloat()
-                        val previewWidthDp = with(density) { (previewHeight.toPx(this) * aspect).dp }
+                        // Prefer exact preview size (frame size). Fallback: fixed height with aspect.
+                        val fallbackHeight = dimensionResource(id = R.dimen.drag_preview_height)
+                        val (previewWidthDp, previewHeightDp) = if (dragPreviewWidthDp != null && dragPreviewHeightDp != null) {
+                            Pair(dragPreviewWidthDp!!, dragPreviewHeightDp!!)
+                        } else {
+                            val aspect = dragBitmap!!.width.toFloat() / dragBitmap!!.height.toFloat()
+                            val w = with(density) { (fallbackHeight.toPx(this) * aspect).dp }
+                            Pair(w, fallbackHeight)
+                        }
+
                         Image(
                             bitmap = dragBitmap!!.asImageBitmap(),
                             contentDescription = null,
@@ -389,7 +416,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                             modifier = Modifier
                                 .offset {
                                     val previewWidthPx = previewWidthDp.toPx(density)
-                                    val previewHeightPx = previewHeight.toPx(density)
+                                    val previewHeightPx = previewHeightDp.toPx(density)
                                     val localX = dragOffset.x - rootOriginInWindow.x
                                     val localY = dragOffset.y - rootOriginInWindow.y
                                     IntOffset(
@@ -397,7 +424,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                         (localY - previewHeightPx / 2f).roundToInt()
                                     )
                                 }
-                                .size(previewWidthDp, previewHeight)
+                                .size(previewWidthDp, previewHeightDp)
                         )
                     }
                 }

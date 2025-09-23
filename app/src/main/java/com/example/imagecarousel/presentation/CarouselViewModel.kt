@@ -27,6 +27,29 @@ class CarouselViewModel @Inject constructor(private val getImagesUseCase: GetIma
     private val _canvasImages = mutableStateListOf<CanvasImage>()
     val canvasImages: List<CanvasImage> get() = _canvasImages
 
+    fun loadImages(count: Int = 5) {
+        viewModelScope.launch(Dispatchers.IO) {
+            getImagesUseCase.getImages(count).onStart {
+                _uiState.value = CarouselUiState(loading = true)
+            }.catch {
+                _uiState.value = CarouselUiState(error = it.message)
+            }.collect { dataState ->
+                when (dataState) {
+                    is DataState.Success -> {
+                        _uiState.value = CarouselUiState(images = dataState.data.images)
+                    }
+                    is DataState.Error -> {
+                        _uiState.value = CarouselUiState(loading = false, error = dataState.message)
+                    }
+                    is DataState.Loading -> {
+                        _uiState.value = CarouselUiState(loading = true)
+                    }
+                }
+            }
+
+        }
+    }
+
     fun addCanvasImage(bm: Bitmap, offset: Offset, userScale: Float = 1f) {
         _canvasImages += CanvasImage(
             id = UUID.randomUUID().toString(),
@@ -55,28 +78,5 @@ class CarouselViewModel @Inject constructor(private val getImagesUseCase: GetIma
             .takeIf { it >= 0 }?.let { idx ->
                 _canvasImages[idx] = _canvasImages[idx].copy(imageTranslation = translation)
             }
-    }
-
-    fun loadImages(count: Int = 5) {
-        viewModelScope.launch(Dispatchers.IO) {
-            getImagesUseCase.getImages(count).onStart {
-                _uiState.value = CarouselUiState(loading = true)
-            }.catch {
-                _uiState.value = CarouselUiState(error = it.message)
-            }.collect { dataState ->
-                when (dataState) {
-                    is DataState.Success -> {
-                        _uiState.value = CarouselUiState(images = dataState.data.images)
-                    }
-                    is DataState.Error -> {
-                        _uiState.value = CarouselUiState(loading = false, error = dataState.message)
-                    }
-                    is DataState.Loading -> {
-                        _uiState.value = CarouselUiState(loading = true)
-                    }
-                }
-            }
-
-        }
     }
 }

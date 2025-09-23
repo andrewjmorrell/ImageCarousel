@@ -2,7 +2,6 @@ package com.example.imagecarousel.di
 
 import android.content.Context
 import com.example.imagecarousel.data.local.LocalImageRepository
-import com.example.imagecarousel.data.mediastore.MediaStoreImageRepository
 import com.example.imagecarousel.domain.repository.ImageRepository
 import com.example.imagecarousel.domain.usecases.GetImagesUseCase
 import dagger.Module
@@ -23,6 +22,6 @@ object AppModule {
      @Provides
      @Singleton
      fun providesImageRepository(@ApplicationContext context: Context): ImageRepository = LocalImageRepository(context)
-     //swap here to use a different repository
+     //swap here to use a different data source
      //fun providesImageRepository(@ApplicationContext context: Context): ImageRepository = MediaStoreImageRepository(context)
 }

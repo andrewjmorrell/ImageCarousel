@@ -7,7 +7,7 @@ import java.util.UUID
 data class CanvasImage(
     val id: String = UUID.randomUUID().toString(),
     val bitmap: Bitmap,
-    var offset: Offset = Offset.Zero, // top-left position of the frame within the canvas
+    var offset: Offset = Offset.Zero,
     var userScale: Float = 1f,
     var imageTranslation: Offset = Offset.Zero
 )
