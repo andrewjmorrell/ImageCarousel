@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -66,14 +67,16 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
     var isDragging by remember { mutableStateOf(false) }
     var dragBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
-    // State for canvas item being dragged via long-press
     var draggingCanvasItemId by remember { mutableStateOf<String?>(null) }
 
     var rootOriginInWindow by remember { mutableStateOf(Offset.Zero) }
 
     val density = LocalDensity.current
 
-    LaunchedEffect(Unit) { viewModel.loadImages() }
+    //Load the images into the carousel
+    LaunchedEffect(Unit) {
+        viewModel.loadImages()
+    }
 
     Scaffold { paddingValues ->
         Box(
@@ -98,23 +101,24 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                             color = Color.Black,
                             modifier = Modifier.align(alignment = Alignment.CenterHorizontally),
                             style = MaterialTheme.typography.titleLarge,
-                            fontSize = 18.sp)
-                        // Canvas fills all remaining vertical space above the carousel
+                            fontSize = dimensionResource(R.dimen.title_height).value.sp
+                        )
+
                         if (canvasImages.isNotEmpty()) {
                             Text(
-                                "Long press an image to move",
+                                text = stringResource(R.string.canvas_text),
                                 color = Color.Black,
                                 modifier = Modifier
                                     .align(Alignment.CenterHorizontally),
-                                fontSize = 12.sp
+                                fontSize = dimensionResource(R.dimen.text_height).value.sp
                             )
                         } else {
-                            Spacer(modifier = Modifier.height(15.dp))
+                            Spacer(modifier = Modifier.height(dimensionResource(R.dimen.spacer_height)))
                         }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 2.dp)
+                                .padding(horizontal = dimensionResource(R.dimen.canvas_padding))
                                 .weight(1f)
                                 .background(Color.Black)
                                 .onGloballyPositioned { coords ->
@@ -167,14 +171,15 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                 val frameWdp = with(densityLocal) { frameWpx.toDp() }
                                 val frameHdp = with(densityLocal) { frameHpx.toDp() }
 
-                                // Content fills the frame at rest (Crop), user zoom is additional
-                                val baseScale = 1f
-                                val currentScale = (baseScale * userScale).coerceAtLeast(1f).coerceAtMost(8f)
+                                // Zoom inside a fixed frame: the frame size never changes; userScale >= 1f
+                                val currentZoom = userScale.coerceIn(1f, 8f)
 
-                                // Clamp helper — ensures no blank space can appear at any scale
-                                fun clampPanWithScale(p: Offset, scale: Float): Offset {
-                                    val contentW = frameWpx * scale
-                                    val contentH = frameHpx * scale
+                                // Clamp helper — ensures no blank space can appear at any zoom
+                                fun clampPanWithZoom(p: Offset, zoom: Float): Offset {
+                                    // Image composable fills the frame; ContentScale.Crop ensures cover at rest.
+                                    // The layer scales the *content* by zoom, so drawn content size = frame size * zoom.
+                                    val contentW = frameWpx * zoom
+                                    val contentH = frameHpx * zoom
                                     val maxPanX = ((contentW - frameWpx) / 2f).coerceAtLeast(0f)
                                     val maxPanY = ((contentH - frameHpx) / 2f).coerceAtLeast(0f)
                                     return Offset(
@@ -183,8 +188,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     )
                                 }
 
-                                // Keep existing translation valid for the current scale
-                                imageTranslation = clampPanWithScale(imageTranslation, currentScale)
+                                // Keep existing translation valid for the current zoom
+                                imageTranslation = clampPanWithZoom(imageTranslation, currentZoom)
 
                                 // Frame box (aspect-correct), draggable by its border; inner image supports pinch-zoom/pan
                                 Box(
@@ -291,9 +296,9 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                         .pointerInput(item.id, draggingCanvasItemId) {
                                             if (draggingCanvasItemId != item.id) {
                                                 detectTransformGestures { centroid, pan, zoom, _ ->
-                                                    val oldUser = userScale
-                                                    val newUser = (oldUser * zoom).coerceIn(1f, 8f)
-                                                    val k = newUser / oldUser
+                                                    val oldZoom = userScale
+                                                    val newZoom = (oldZoom * zoom).coerceIn(1f, 8f)
+                                                    val k = newZoom / oldZoom
 
                                                     val frameCenter = Offset(frameWpx / 2f, frameHpx / 2f)
                                                     val newTranslation = Offset(
@@ -301,10 +306,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                                         y = k * imageTranslation.y - (k - 1f) * (centroid.y - frameCenter.y) + pan.y
                                                     )
 
-                                                    val newCurrentScale =
-                                                        (baseScale * newUser).coerceAtLeast(1f).coerceAtMost(8f)
-                                                    imageTranslation = clampPanWithScale(newTranslation, newCurrentScale)
-                                                    userScale = newUser
+                                                    imageTranslation = clampPanWithZoom(newTranslation, newZoom)
+                                                    userScale = newZoom
                                                 }
                                             }
                                         }
@@ -312,20 +315,15 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     Image(
                                         bitmap = item.bitmap.asImageBitmap(),
                                         contentDescription = null,
-                                        contentScale = ContentScale.Crop, // cover — no blank space at rest
+                                        contentScale = ContentScale.Crop, // cover at rest inside the fixed frame
                                         modifier = Modifier
-                                            .fillMaxSize()
+                                            .fillMaxSize() // Image matches the frame size; only content is scaled via layer
                                             .graphicsLayer {
-                                                transformOrigin = TransformOrigin(0.5f, 0.5f)
-
-                                                val drawnW = frameWpx * currentScale
-                                                val drawnH = frameHpx * currentScale
-                                                val centerX = (frameWpx - drawnW) / 2f
-                                                val centerY = (frameHpx - drawnH) / 2f
-                                                translationX = centerX + imageTranslation.x
-                                                translationY = centerY + imageTranslation.y
-                                                scaleX = currentScale
-                                                scaleY = currentScale
+                                                transformOrigin = TransformOrigin.Center
+                                                scaleX = currentZoom
+                                                scaleY = currentZoom
+                                                translationX = imageTranslation.x
+                                                translationY = imageTranslation.y
                                             }
                                     )
                                 }
@@ -333,12 +331,11 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                         }
 
                         Text(
-                            "Long press to drag image",
+                            text = stringResource(R.string.carousel_text),
                             color = Color.Black,
                             modifier = Modifier
-                                .padding(start = 8.dp)
                                 .align(Alignment.CenterHorizontally),
-                            fontSize = 12.sp
+                            fontSize = dimensionResource(R.dimen.text_height).value.sp
                         )
 
                         // Carousel
@@ -388,7 +385,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
                     // Drag preview overlay (follows the finger)
                     if (isDragging && dragBitmap != null) {
-                        val previewHeight = 96.dp
+                        val previewHeight = dimensionResource(id = R.dimen.drag_preview_height)
                         val aspect = dragBitmap!!.width.toFloat() / dragBitmap!!.height.toFloat()
                         val previewWidthDp = with(density) { (previewHeight.toPx(this) * aspect).dp }
                         Image(
@@ -407,7 +404,6 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     )
                                 }
                                 .size(previewWidthDp, previewHeight)
-                                .clip(RoundedCornerShape(12.dp))
                         )
                     }
                 }

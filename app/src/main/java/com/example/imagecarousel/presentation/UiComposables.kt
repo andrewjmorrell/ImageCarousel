@@ -25,8 +25,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
+import com.example.imagecarousel.R
 import com.example.imagecarousel.domain.Image
 import kotlin.math.roundToInt
 
@@ -44,16 +46,16 @@ fun Carousel(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(110.dp)
-                .padding(horizontal = 12.dp)
+                .height(height = dimensionResource(R.dimen.carousel_height).value.dp)
+                .padding(horizontal = dimensionResource(R.dimen.spacer_height))
         ) {
             items(images) { image ->
                 var itemOriginInWindow by remember { mutableStateOf(Offset.Zero) }
-                val thumbHeight = 96.dp
+                val thumbHeight = dimensionResource(R.dimen.carousel_thumb_height).value.dp
                 val aspect = (image.bitmap?.width ?: 1).toFloat() / (image.bitmap?.height ?: 1).toFloat()
                 Box(
                     modifier = Modifier
-                        .padding(end = 12.dp)
+                        .padding(end = dimensionResource(R.dimen.spacer_height))
                         .height(thumbHeight)
                         .aspectRatio(aspect, matchHeightConstraintsFirst = true)
                         .background(Color.White)

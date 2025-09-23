@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Image Carousel</string>
+    <string name="canvas_text">Long press to move image</string>
+    <string name="carousel_text">Long press to drag image</string>
 </resources>

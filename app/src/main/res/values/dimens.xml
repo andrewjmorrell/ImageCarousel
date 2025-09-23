@@ -1,2 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources></resources>
+<resources>
+    <dimen name="title_height">18sp</dimen>
+    <dimen name="text_height">12sp</dimen>
+    <dimen name="canvas_padding">2dp</dimen>
+    <dimen name="spacer_height">12dp</dimen>
+    <dimen name="drag_preview_height">96dp</dimen>
+    <dimen name="carousel_height">110dp</dimen>
+    <dimen name="carousel_thumb_height">96dp</dimen>
+
+</resources>
