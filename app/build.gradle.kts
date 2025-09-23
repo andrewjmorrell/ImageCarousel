@@ -52,6 +52,20 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     testImplementation(libs.junit)
+    // JUnit 5
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+
+    // Mockito
+    testImplementation(libs.mockito.core.v5120)
+    testImplementation(libs.mockito.kotlin.v531)
+    testImplementation(libs.mockito.inline) // or newer 5.x
+
+    // Coroutines Test
+    testImplementation(libs.kotlinx.coroutines.test.v181)
+
+    // Turbine
+    testImplementation(libs.turbine.v110)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -65,4 +79,8 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }

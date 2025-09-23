@@ -9,20 +9,18 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -30,7 +28,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -48,12 +45,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
-import com.example.imagecarousel.domain.Image
+import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.example.imagecarousel.R
 
@@ -71,6 +66,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
     var isDragging by remember { mutableStateOf(false) }
     var dragBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    // State for canvas item being dragged via long-press
+    var draggingCanvasItemId by remember { mutableStateOf<String?>(null) }
 
     var rootOriginInWindow by remember { mutableStateOf(Offset.Zero) }
 
@@ -78,24 +75,12 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) { viewModel.loadImages() }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
-                ),
-                title = {
-                    Text(text = stringResource(R.string.app_name))
-                }
-            )
-        }
-    ) { paddingValues ->
+    Scaffold { paddingValues ->
         Box(
             modifier = modifier
                 .padding(paddingValues)
                 .fillMaxSize()
-                .background(Color(0xFFFFFFFF))
+                .background(Color.White)
         ) {
             when {
                 state.loading -> {
@@ -107,15 +92,31 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                 else -> {
                     Column(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.SpaceBetween
+                        verticalArrangement = Arrangement.Top
                     ) {
+                        Text(text = stringResource(R.string.app_name),
+                            color = Color.Black,
+                            modifier = Modifier.align(alignment = Alignment.CenterHorizontally),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontSize = 18.sp)
                         // Canvas fills all remaining vertical space above the carousel
+                        if (canvasImages.isNotEmpty()) {
+                            Text(
+                                "Long press an image to move",
+                                color = Color.Black,
+                                modifier = Modifier
+                                    .align(Alignment.CenterHorizontally),
+                                fontSize = 12.sp
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(15.dp))
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 2.dp)
                                 .weight(1f)
-                                .background(Color(0xFF111315))
+                                .background(Color.Black)
                                 .onGloballyPositioned { coords ->
                                     rootOriginInWindow = coords.positionInWindow()
                                     val pos = coords.positionInWindow()
@@ -128,13 +129,15 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     )
                                 }
                         ) {
-                            // Render all placed images
                             canvasImages.forEach { item ->
+                                // (no early return; instead, hide dragged item via alpha)
                                 // Per-item gesture state
                                 // Per-item gesture state with Compose state-backed vars
                                 var frameOffset by remember(item.id) { mutableStateOf(item.offset) }
                                 var userScale by remember(item.id) { mutableStateOf(item.userScale) }
                                 var imageTranslation by remember(item.id) { mutableStateOf(item.imageTranslation) }
+                                // Remembered position in window for this frame
+                                var frameOriginInWindow by remember(item.id) { mutableStateOf(Offset.Zero) }
 
                                 LaunchedEffect(item.offset) { frameOffset = item.offset }
                                 LaunchedEffect(item.userScale) { userScale = item.userScale }
@@ -188,52 +191,121 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     modifier = Modifier
                                         .size(width = frameWdp, height = frameHdp)
                                         .offset { IntOffset(frameOffset.x.roundToInt(), frameOffset.y.roundToInt()) }
+                                        .onGloballyPositioned { coords ->
+                                            frameOriginInWindow = coords.positionInWindow()
+                                        }
+                                        .graphicsLayer { alpha = if (draggingCanvasItemId == item.id) 0f else 1f }
+                                        // Long-press drag to move image from canvas (like carousel)
+                                        .pointerInput("canvasLongPressDrag-${item.id}") {
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = { start ->
+                                                    // Show overlay while dragging; keep item in list to avoid cancelling gesture
+                                                    draggingCanvasItemId = item.id
+                                                    dragBitmap = item.bitmap
+                                                    isDragging = true
+                                                    // absolute pointer in window at gesture start
+                                                    val startInWindow = frameOriginInWindow + start
+                                                    dragOffset = startInWindow
+                                                },
+                                                onDrag = { change, _ ->
+                                                    // absolute pointer in window during drag
+                                                    dragOffset = frameOriginInWindow + change.position
+                                                    change.consume()
+                                                },
+                                                onDragEnd = {
+                                                    val bmp = dragBitmap
+                                                    if (bmp != null && canvasBounds.contains(dragOffset)) {
+                                                        val localX = dragOffset.x - canvasBounds.left
+                                                        val localY = dragOffset.y - canvasBounds.top
+                                                        val bmpW2 = bmp.width.toFloat()
+                                                        val bmpH2 = bmp.height.toFloat()
+                                                        val canvasW = canvasBounds.width.toFloat()
+                                                        val canvasH = canvasBounds.height.toFloat()
+                                                        val initialFitFraction = 0.6f
+                                                        val scaleToFitCanvas = minOf(canvasW / bmpW2, canvasH / bmpH2, 1f) * initialFitFraction
+                                                        val frameWpx2 = (bmpW2 * scaleToFitCanvas).coerceAtLeast(1f)
+                                                        val frameHpx2 = (bmpH2 * scaleToFitCanvas).coerceAtLeast(1f)
+                                                        val desiredTopLeftX = localX - frameWpx2 / 2f
+                                                        val desiredTopLeftY = localY - frameHpx2 / 2f
+                                                        val clampedX = desiredTopLeftX.coerceIn(0f, (canvasW - frameWpx2).coerceAtLeast(0f))
+                                                        val clampedY = desiredTopLeftY.coerceIn(0f, (canvasH - frameHpx2).coerceAtLeast(0f))
+
+                                                        // Update the existing item's offset
+                                                        viewModel.updateOffset(item.id, Offset(clampedX, clampedY))
+
+                                                        // Bring this item to front by moving it to the end of the list
+                                                        val list = viewModel.canvasImages
+                                                        if (list is MutableList<*>) {
+                                                            @Suppress("UNCHECKED_CAST")
+                                                            val mutable = list as MutableList<com.example.imagecarousel.presentation.models.CanvasImage>
+                                                            val idx = mutable.indexOfFirst { it.id == item.id }
+                                                            if (idx >= 0 && idx < mutable.size - 1) {
+                                                                val moved = mutable.removeAt(idx)
+                                                                mutable.add(moved)
+                                                            }
+                                                        }
+                                                    }
+                                                    // reset drag flags
+                                                    draggingCanvasItemId = null
+                                                    isDragging = false
+                                                    dragBitmap = null
+                                                },
+                                                onDragCancel = {
+                                                    draggingCanvasItemId = null
+                                                    isDragging = false
+                                                    dragBitmap = null
+                                                }
+                                            )
+                                        }
                                         .clip(RoundedCornerShape(1.dp))
                                         .clipToBounds()
                                         .background(Color.Black)
                                         // Drag the whole frame by a 16dp border
-                                        .pointerInput("frameDrag-${item.id}") {
-                                            var dragFrame = false
-                                            detectDragGestures(
-                                                onDragStart = { start ->
-                                                    val borderPx = with(densityLocal) { 16.dp.toPx() }
-                                                    dragFrame = start.x <= borderPx || start.y <= borderPx ||
-                                                            start.x >= frameWpx - borderPx || start.y >= frameHpx - borderPx
-                                                },
-                                                onDrag = { change, dragAmount ->
-                                                    if (dragFrame) {
-                                                        val new = frameOffset + dragAmount
-                                                        val maxX = (canvasBounds.width - frameWpx).coerceAtLeast(0f)
-                                                        val maxY = (canvasBounds.height - frameHpx).coerceAtLeast(0f)
-                                                        frameOffset = Offset(
-                                                            new.x.coerceIn(0f, maxX),
-                                                            new.y.coerceIn(0f, maxY)
-                                                        )
-                                                        change.consume()
-                                                    }
-                                                },
-                                                onDragEnd = { dragFrame = false },
-                                                onDragCancel = { dragFrame = false }
-                                            )
+                                        .pointerInput("frameDrag-${item.id}", draggingCanvasItemId) {
+                                            if (draggingCanvasItemId != item.id) {
+                                                var dragFrame = false
+                                                detectDragGestures(
+                                                    onDragStart = { start ->
+                                                        val borderPx = with(densityLocal) { 16.dp.toPx() }
+                                                        dragFrame = start.x <= borderPx || start.y <= borderPx ||
+                                                                start.x >= frameWpx - borderPx || start.y >= frameHpx - borderPx
+                                                    },
+                                                    onDrag = { change, dragAmount ->
+                                                        if (dragFrame) {
+                                                            val new = frameOffset + dragAmount
+                                                            val maxX = (canvasBounds.width - frameWpx).coerceAtLeast(0f)
+                                                            val maxY = (canvasBounds.height - frameHpx).coerceAtLeast(0f)
+                                                            frameOffset = Offset(
+                                                                new.x.coerceIn(0f, maxX),
+                                                                new.y.coerceIn(0f, maxY)
+                                                            )
+                                                            change.consume()
+                                                        }
+                                                    },
+                                                    onDragEnd = { dragFrame = false },
+                                                    onDragCancel = { dragFrame = false }
+                                                )
+                                            }
                                         }
                                         // Pinch to zoom + pan the IMAGE inside the frame
-                                        .pointerInput(item.id) {
-                                            detectTransformGestures { centroid, pan, zoom, _ ->
-                                                val oldUser = userScale
-                                                val newUser = (oldUser * zoom).coerceIn(1f, 8f)
-                                                val k = newUser / oldUser
+                                        .pointerInput(item.id, draggingCanvasItemId) {
+                                            if (draggingCanvasItemId != item.id) {
+                                                detectTransformGestures { centroid, pan, zoom, _ ->
+                                                    val oldUser = userScale
+                                                    val newUser = (oldUser * zoom).coerceIn(1f, 8f)
+                                                    val k = newUser / oldUser
 
-                                                // keep the point under fingers steady
-                                                val frameCenter = Offset(frameWpx / 2f, frameHpx / 2f)
-                                                val newTranslation = Offset(
-                                                    x = k * imageTranslation.x - (k - 1f) * (centroid.x - frameCenter.x) + pan.x,
-                                                    y = k * imageTranslation.y - (k - 1f) * (centroid.y - frameCenter.y) + pan.y
-                                                )
+                                                    val frameCenter = Offset(frameWpx / 2f, frameHpx / 2f)
+                                                    val newTranslation = Offset(
+                                                        x = k * imageTranslation.x - (k - 1f) * (centroid.x - frameCenter.x) + pan.x,
+                                                        y = k * imageTranslation.y - (k - 1f) * (centroid.y - frameCenter.y) + pan.y
+                                                    )
 
-                                                val newCurrentScale =
-                                                    (baseScale * newUser).coerceAtLeast(1f).coerceAtMost(8f)
-                                                imageTranslation = clampPanWithScale(newTranslation, newCurrentScale)
-                                                userScale = newUser
+                                                    val newCurrentScale =
+                                                        (baseScale * newUser).coerceAtLeast(1f).coerceAtMost(8f)
+                                                    imageTranslation = clampPanWithScale(newTranslation, newCurrentScale)
+                                                    userScale = newUser
+                                                }
                                             }
                                         }
                                 ) {
@@ -265,7 +337,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                             color = Color.Black,
                             modifier = Modifier
                                 .padding(start = 8.dp)
-                                .align(Alignment.CenterHorizontally)
+                                .align(Alignment.CenterHorizontally),
+                            fontSize = 12.sp
                         )
 
                         // Carousel
@@ -342,70 +415,3 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
         }
     }
 }
-
-@Composable
-private fun Carousel(
-    images: List<Image>,
-    onStartDrag: (bitmap: Bitmap, startOffsetInWindow: Offset) -> Unit,
-    onDrag: (bitmap: Bitmap, pointerInWindow: Offset) -> Unit,
-    onEndDrag: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var lastPointerInWindow by remember { mutableStateOf(Offset.Zero) }
-
-    Box(modifier = modifier) {
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(110.dp)
-                .padding(horizontal = 12.dp)
-        ) {
-            items(images) { image ->
-                var itemOriginInWindow by remember { mutableStateOf(Offset.Zero) }
-                val thumbHeight = 96.dp
-                val aspect = (image.bitmap?.width ?: 1).toFloat() / (image.bitmap?.height ?: 1).toFloat()
-                Box(
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .height(thumbHeight)
-                        .aspectRatio(aspect, matchHeightConstraintsFirst = true)
-                        .clip(RoundedCornerShape(1.dp))
-                        .background(Color(0xFFFFFFFF))
-                        .onGloballyPositioned { coords ->
-                            itemOriginInWindow = coords.positionInWindow()
-                        }
-                        .pointerInput(image) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = { start ->
-                                    lastPointerInWindow = itemOriginInWindow + start
-                                    onStartDrag(image.bitmap!!, lastPointerInWindow)
-                                },
-                                onDrag = { change, _ ->
-                                    lastPointerInWindow = itemOriginInWindow + change.position
-                                    onDrag(image.bitmap!!, lastPointerInWindow)
-                                },
-                                onDragEnd = { onEndDrag() },
-                                onDragCancel = { onEndDrag() }
-                            )
-                        }
-                ) {
-                    Image(
-                        bitmap = image.bitmap!!.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun IntRect.contains(point: Offset): Boolean {
-    val x = point.x.roundToInt()
-    val y = point.y.roundToInt()
-    return x in left..right && y in top..bottom
-}
-
-private fun androidx.compose.ui.unit.Dp.toPx(density: androidx.compose.ui.unit.Density): Float =
-    with(density) { this@toPx.toPx() }
