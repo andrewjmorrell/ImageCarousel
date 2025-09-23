@@ -52,6 +52,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.example.imagecarousel.R
+import com.example.imagecarousel.presentation.models.CanvasImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,7 +76,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
     //Load the images into the carousel
     LaunchedEffect(Unit) {
-        viewModel.loadImages()
+        viewModel.loadImages(8)
     }
 
     Scaffold { paddingValues ->
@@ -157,7 +158,6 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                     viewModel.updateImageTranslation(item.id, imageTranslation)
                                 }
 
-                                // --- Frame sizing: match bitmap aspect, fit inside canvas, start smaller (no upscaling > 1:1) ---
                                 val densityLocal = LocalDensity.current
                                 val bmpW = item.bitmap.width.toFloat()
                                 val bmpH = item.bitmap.height.toFloat()
@@ -242,7 +242,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                                         val list = viewModel.canvasImages
                                                         if (list is MutableList<*>) {
                                                             @Suppress("UNCHECKED_CAST")
-                                                            val mutable = list as MutableList<com.example.imagecarousel.presentation.models.CanvasImage>
+                                                            val mutable = list as MutableList<CanvasImage>
                                                             val idx = mutable.indexOfFirst { it.id == item.id }
                                                             if (idx >= 0 && idx < mutable.size - 1) {
                                                                 val moved = mutable.removeAt(idx)
@@ -251,11 +251,6 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                                         }
                                                     }
                                                     // reset drag flags
-                                                    draggingCanvasItemId = null
-                                                    isDragging = false
-                                                    dragBitmap = null
-                                                },
-                                                onDragCancel = {
                                                     draggingCanvasItemId = null
                                                     isDragging = false
                                                     dragBitmap = null
@@ -287,8 +282,7 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                                             change.consume()
                                                         }
                                                     },
-                                                    onDragEnd = { dragFrame = false },
-                                                    onDragCancel = { dragFrame = false }
+                                                    onDragEnd = { dragFrame = false }
                                                 )
                                             }
                                         }

@@ -6,7 +6,6 @@ import com.example.imagecarousel.domain.Image
 import com.example.imagecarousel.domain.ImageResponse
 
 fun ImageDto.toDomain(): Image = Image(
-    filename = filename,
     bitmap = image
 )
 

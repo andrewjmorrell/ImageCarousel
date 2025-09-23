@@ -11,7 +11,6 @@ import javax.inject.Inject
 class GetImagesUseCase @Inject constructor(
     private val repository: ImageRepository
 ) {
-
     fun getImages(count: Int = 5): Flow<DataState<ImageResponse>> = flow {
         emit(DataState.Loading)
         try {

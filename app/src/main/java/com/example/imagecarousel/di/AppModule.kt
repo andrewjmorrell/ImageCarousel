@@ -23,5 +23,6 @@ object AppModule {
      @Provides
      @Singleton
      fun providesImageRepository(@ApplicationContext context: Context): ImageRepository = LocalImageRepository(context)
+     //swap here to use a different repository
      //fun providesImageRepository(@ApplicationContext context: Context): ImageRepository = MediaStoreImageRepository(context)
 }

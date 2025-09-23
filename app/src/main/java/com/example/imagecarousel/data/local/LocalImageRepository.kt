@@ -16,12 +16,12 @@ class LocalImageRepository @Inject constructor(private val context: Context): Im
         return try {
             val imageFiles = assetManager.list("image") ?: emptyArray()
             val dto = ImageResponseDto(
-                images = imageFiles.mapNotNull { fileName ->
+                images = imageFiles.take(count).mapNotNull { fileName ->
                     try {
                         val inputStream = assetManager.open("image/$fileName")
                         val bitmap =
                             BitmapFactory.decodeStream(inputStream).also { inputStream.close() }
-                        bitmap?.let { ImageDto(filename = fileName, image =it) }
+                        bitmap?.let { ImageDto(image = it) }
                     } catch (e: IOException) {
                         null
                     }
