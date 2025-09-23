@@ -10,11 +10,15 @@ This is my solution to the Shutterfly interview project  I would like to summari
 - In order to make the carousel easily scrollable the user must long press on a carousel image in order to place the image on the canvas.
 - Once an image is on the canvas it has the same height and width as the original bitmap.  Zooming can be accomplished by pinching the image.
 - Once an image is zoomed it can be panned within the image frame.
-- If the user long presses on a canvas image it can be moved around the canvas.  It will also be brought to the front of the image layers as
-the images can be overlayed on top of each other.
+- Once an image is on the canvas it can be moved around the canvas by long pressing it and then moving it once the preview is shown.  It will also be 
+brought to the front of the image layers as the images can be overlayed on top of each other.  This is done so that moving an image does not conflict 
+with zooming or panning.
 - Images cannot be removed from the canvas once they have been placed.
 - Images do not disappear from the carousel when placed on the canvas.  Multiples of the same image can be put on the canvas.
-- The app is locked in portrait mode.  Explanation below.
+- The app locks itself in whatever orientation the device is in when the app starts.  If you start the app in portrait it will lock that way and
+the same with landscape.  This is held until the main activity closes.  This is done in order to support both portrait and landscape but the 
+math necessary to translate the images on the canvas into the new orientation is beyond the scope of this project.  Device rotation was not
+called out specifically as a requirement so I am acknowledging that it can be done but it being considered out of scope.
 
 
 # The solution utilizes the following:
@@ -38,8 +42,9 @@ happen but it demonstrates using flow to support the UI state.
 
 The viewmodel class loads the images from the repository and maintains a list of those images.  It also maintains a list of the images that have been put on the canvas.
 These images are kept in a new data class in order to support unique ID, offset, scale, etc.  It provides methods to modify the content and placement data of those objects.
-It will be the source of truth for the carousel as well as the canvas.  This would be important if the app could be put into landscape mode but it cannot.  This is because
-the canvas size changes upon device rotation and the images would need to be translated into this new size but that is beyond the scope of this project.
+It will be the source of truth for the carousel as well as the canvas.  This would be important if the app could change orientation but it cannot.  In order to support device 
+rotation the optimal size of the canvas would need to be established at app start so that the dropped images would be in the correct location once the device is rotated.  The
+complexity of this is beyond the scope of this project.  
 
 There is a UiState class that is used to keep separation of the domain state and the UI state.  This is also unnecessary for a project this simple but is considered
 good architectural practice in a more complex scenario.

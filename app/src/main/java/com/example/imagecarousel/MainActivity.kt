@@ -7,11 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.imagecarousel.presentation.CarouselScreen
+import com.example.imagecarousel.presentation.HomeScreen
 import com.example.imagecarousel.ui.theme.ImageCarouselTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -23,7 +20,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             ImageCarouselTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    CarouselScreen(
+                    HomeScreen(
                         modifier = Modifier.padding(innerPadding)
                     )
                 }

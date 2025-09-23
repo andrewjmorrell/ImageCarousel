@@ -9,10 +9,10 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,17 +46,22 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.example.imagecarousel.R
 import com.example.imagecarousel.presentation.models.CanvasImage
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CarouselScreen(modifier: Modifier = Modifier) {
+fun HomeScreen(modifier: Modifier = Modifier) {
 
     val viewModel: CarouselViewModel = hiltViewModel<CarouselViewModel>()
     val state by viewModel.uiState.collectAsState()
@@ -72,12 +77,28 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
     var dragPreviewWidthDp by remember { mutableStateOf<androidx.compose.ui.unit.Dp?>(null) }
     var dragPreviewHeightDp by remember { mutableStateOf<androidx.compose.ui.unit.Dp?>(null) }
 
-    var rootOriginInWindow by remember { mutableStateOf(Offset.Zero) }
+    var overlayOriginInWindow by remember { mutableStateOf(Offset.Zero) }
 
     val density = LocalDensity.current
 
-    //Load the images into the carousel
+    // Capture the device orientation once at app start; never update it on rotation
+    val configuration = LocalConfiguration.current
+    val context = LocalContext.current
+    var initialOrientation by rememberSaveable { mutableStateOf<Int?>(null) }
+
+    // Lock orientation to the app's initial orientation and load images
     LaunchedEffect(Unit) {
+        if (initialOrientation == null) {
+            initialOrientation = configuration.orientation
+            val activity = context as? Activity
+            if (activity != null) {
+                activity.requestedOrientation = if (initialOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
+            }
+        }
         viewModel.loadImages(8)
     }
 
@@ -87,6 +108,9 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                 .padding(paddingValues)
                 .fillMaxSize()
                 .background(Color.White)
+                .onGloballyPositioned { coords ->
+                    overlayOriginInWindow = coords.positionInWindow()
+                }
         ) {
             when {
                 state.loading -> {
@@ -117,12 +141,19 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .then(
+                                    if (initialOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                                        Modifier.fillMaxHeight()
+                                    } else {
+                                        Modifier.fillMaxWidth()
+                                    }
+                                )
+                                .aspectRatio(1f)
                                 .padding(horizontal = dimensionResource(R.dimen.canvas_padding))
                                 .weight(1f)
                                 .background(Color.Black)
+                                .align(Alignment.CenterHorizontally)
                                 .onGloballyPositioned { coords ->
-                                    rootOriginInWindow = coords.positionInWindow()
                                     val pos = coords.positionInWindow()
                                     val size = coords.size
                                     canvasBounds = IntRect(
@@ -134,13 +165,9 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                 }
                         ) {
                             canvasImages.forEach { item ->
-                                // (no early return; instead, hide dragged item via alpha)
-                                // Per-item gesture state
-                                // Per-item gesture state with Compose state-backed vars
                                 var frameOffset by remember(item.id) { mutableStateOf(item.offset) }
                                 var userScale by remember(item.id) { mutableStateOf(item.userScale) }
                                 var imageTranslation by remember(item.id) { mutableStateOf(item.imageTranslation) }
-                                // Remembered position in window for this frame
                                 var frameOriginInWindow by remember(item.id) { mutableStateOf(Offset.Zero) }
 
                                 LaunchedEffect(item.offset) { frameOffset = item.offset }
@@ -175,8 +202,6 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
 
                                 // Clamp helper — ensures no blank space can appear at any zoom
                                 fun clampPanWithZoom(p: Offset, zoom: Float): Offset {
-                                    // Image composable fills the frame; ContentScale.Crop ensures cover at rest.
-                                    // The layer scales the *content* by zoom, so drawn content size = frame size * zoom.
                                     val contentW = frameWpx * zoom
                                     val contentH = frameHpx * zoom
                                     val maxPanX = ((contentW - frameWpx) / 2f).coerceAtLeast(0f)
@@ -190,7 +215,6 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                 // Keep existing translation valid for the current zoom
                                 imageTranslation = clampPanWithZoom(imageTranslation, currentZoom)
 
-                                // Frame box (aspect-correct), draggable by its border; inner image supports pinch-zoom/pan
                                 Box(
                                     modifier = Modifier
                                         .size(width = frameWdp, height = frameHdp)
@@ -414,8 +438,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                 .offset {
                                     val previewWidthPx = with(density) { previewWidthDp.toPx() }
                                     val previewHeightPx = with(density) { previewHeightDp.toPx() }
-                                    val localX = dragOffset.x - rootOriginInWindow.x
-                                    val localY = dragOffset.y - rootOriginInWindow.y
+                                    val localX = dragOffset.x - overlayOriginInWindow.x
+                                    val localY = dragOffset.y - overlayOriginInWindow.y
                                     IntOffset(
                                         (localX - previewWidthPx / 2f).roundToInt(),
                                         (localY - previewHeightPx / 2f).roundToInt()
