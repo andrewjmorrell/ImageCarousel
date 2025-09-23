@@ -17,7 +17,7 @@ the images can be overlayed on top of each other.
 - The app is locked in portrait mode.  Explanation below.
 
 
-The solution utilizes the following:
+# The solution utilizes the following:
 * Repository pattern
 * DI using Hilt
 * MVVM

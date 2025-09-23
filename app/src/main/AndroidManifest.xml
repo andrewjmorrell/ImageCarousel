@@ -16,8 +16,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.ImageCarousel"
-            android:screenOrientation="portrait">
+            android:theme="@style/Theme.ImageCarousel">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

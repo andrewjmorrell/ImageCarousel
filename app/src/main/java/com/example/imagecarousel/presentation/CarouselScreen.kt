@@ -107,17 +107,14 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                             fontSize = dimensionResource(R.dimen.title_height).value.sp
                         )
 
-                        if (canvasImages.isNotEmpty()) {
-                            Text(
-                                text = stringResource(R.string.canvas_text),
-                                color = Color.Black,
-                                modifier = Modifier
-                                    .align(Alignment.CenterHorizontally),
-                                fontSize = dimensionResource(R.dimen.text_height).value.sp
-                            )
-                        } else {
-                            Spacer(modifier = Modifier.height(dimensionResource(R.dimen.spacer_height)))
-                        }
+                        Text(
+                            text = stringResource(R.string.canvas_text),
+                            color = Color.Black,
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally),
+                            fontSize = dimensionResource(R.dimen.text_height).value.sp
+                        )
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -210,9 +207,8 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                                     draggingCanvasItemId = item.id
                                                     dragBitmap = item.bitmap
                                                     isDragging = true
-                                                    // absolute pointer in window at gesture start
-                                                    val startInWindow = frameOriginInWindow + start
-                                                    dragOffset = startInWindow
+                                                    // Set the drag offset to the touch point in window coordinates
+                                                    dragOffset = frameOriginInWindow + start
                                                     // Make the preview match the on-canvas frame size
                                                     dragPreviewWidthDp = with(densityLocal) { frameWpx.toDp() }
                                                     dragPreviewHeightDp = with(densityLocal) { frameHpx.toDp() }
@@ -414,9 +410,10 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
+                                .size(previewWidthDp, previewHeightDp)
                                 .offset {
-                                    val previewWidthPx = previewWidthDp.toPx(density)
-                                    val previewHeightPx = previewHeightDp.toPx(density)
+                                    val previewWidthPx = with(density) { previewWidthDp.toPx() }
+                                    val previewHeightPx = with(density) { previewHeightDp.toPx() }
                                     val localX = dragOffset.x - rootOriginInWindow.x
                                     val localY = dragOffset.y - rootOriginInWindow.y
                                     IntOffset(
@@ -424,7 +421,6 @@ fun CarouselScreen(modifier: Modifier = Modifier) {
                                         (localY - previewHeightPx / 2f).roundToInt()
                                     )
                                 }
-                                .size(previewWidthDp, previewHeightDp)
                         )
                     }
                 }
