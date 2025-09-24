@@ -13,7 +13,11 @@ on the canvas.  Panning would be done by moving the zoomed image within the curr
 the canvas is done by long pressing the image.
 
 The first listed interpretation was chosen as the most likely requirement based upon the wording that the aspect ratio of the image must be maintained while zooming though this
-is still slightly ambiguous.  This is the solution on the main branch.
+is still slightly ambiguous.  This is the solution on the main branch
+
+There are two branches in the repository:
+- Resize/move is in the main branch
+- Zoom/pan is in the branch zoom-pan
 
 # Using the app
 
