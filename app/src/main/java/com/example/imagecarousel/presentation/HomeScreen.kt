@@ -55,9 +55,7 @@ import kotlin.math.roundToInt
 import com.example.imagecarousel.R
 import android.app.Activity
 import android.content.pm.ActivityInfo
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,8 +66,6 @@ fun HomeScreen(modifier: Modifier = Modifier) {
 
     var canvasBounds by remember { mutableStateOf(IntRect(0, 0, 0, 0)) }
     val canvasImages = viewModel.canvasImages
-
-    val hapticFeedback = LocalHapticFeedback.current
 
     // State for cross-composable drag from carousel
     var isDragging by remember { mutableStateOf(false) }
@@ -206,7 +202,8 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                                     .background(Color.Black)
                                     .pointerInput("frameDragOrPinch-${item.id}") {
                                         awaitEachGesture {
-                                            // Wait for first touch; don't require unconsumed so we always get it
+                                            // Start tracking this gesture (don’t require unconsumed so we always get it)
+                                            val first = awaitFirstDown(requireUnconsumed = false)
                                             do {
                                                 val event = awaitPointerEvent()
                                                 val pressed = event.changes.any { it.pressed }
@@ -218,13 +215,21 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                                                     // Multi-touch: pinch to resize the frame
                                                     val oldScale = userScale
                                                     val zoom = event.calculateZoom()
-                                                    val newScale = (oldScale * zoom).coerceIn(minScale, 8f)
+
+                                                    // Max scale that still fits inside the canvas
+                                                    val maxScaleW = canvasBounds.width.toFloat() / baseFrameWpx
+                                                    val maxScaleH = canvasBounds.height.toFloat() / baseFrameHpx
+                                                    val maxAllowedScale = minOf(maxScaleW, maxScaleH, 8f)
+
+                                                    val newScale = (oldScale * zoom).coerceIn(minScale, maxAllowedScale)
                                                     val k = if (oldScale == 0f) 1f else newScale / oldScale
 
+                                                    // Keep pinch centroid anchored
                                                     val centroid = event.calculateCentroid(useCurrent = true)
                                                     val deltaTopLeft = centroid * (1f - k)
                                                     val unclamped = frameOffset + deltaTopLeft
 
+                                                    // Clamp new top-left using the NEW size
                                                     val newW = baseFrameWpx * newScale
                                                     val newH = baseFrameHpx * newScale
                                                     val maxX = (canvasBounds.width - newW).coerceAtLeast(0f)
@@ -236,22 +241,23 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                                                     )
                                                     userScale = newScale
 
-                                                    event.changes.forEach { c -> if (c.positionChange() != Offset.Zero) c.consume() }
+                                                    event.changes.forEach { c ->
+                                                        if (c.positionChange() != Offset.Zero) c.consume()
+                                                    }
                                                 } else {
-                                                    // Single finger: drag the frame
+                                                    // Single finger: drag the frame anywhere (clamp with CURRENT scale)
                                                     val change = event.changes.first { it.pressed }
                                                     val delta = change.positionChange()
                                                     if (delta != Offset.Zero) {
-                                                        val new = frameOffset + delta
-                                                        // Recompute current frame size from the latest scale to avoid stale clamps
                                                         val currentScale = userScale.coerceIn(minScale, 8f)
                                                         val currentFrameW = baseFrameWpx * currentScale
                                                         val currentFrameH = baseFrameHpx * currentScale
                                                         val maxX = (canvasBounds.width - currentFrameW).coerceAtLeast(0f)
                                                         val maxY = (canvasBounds.height - currentFrameH).coerceAtLeast(0f)
+
                                                         frameOffset = Offset(
-                                                            new.x.coerceIn(0f, maxX),
-                                                            new.y.coerceIn(0f, maxY)
+                                                            (frameOffset.x + delta.x).coerceIn(0f, maxX),
+                                                            (frameOffset.y + delta.y).coerceIn(0f, maxY)
                                                         )
                                                         change.consume()
                                                     }
@@ -283,7 +289,6 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                     Carousel(
                         images = state.images,
                         onStartDrag = { bmp, startOffset ->
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                             dragBitmap = bmp
                             dragOffset = startOffset
                             isDragging = true
