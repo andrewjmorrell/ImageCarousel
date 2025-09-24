@@ -26,11 +26,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.res.dimensionResource
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import com.example.imagecarousel.R
 import com.example.imagecarousel.domain.Image
-import kotlin.math.roundToInt
 
 
 @Composable
@@ -63,6 +61,7 @@ fun Carousel(
                         .onGloballyPositioned { coords ->
                             itemOriginInWindow = coords.positionInWindow()
                         }
+                        //Detect a long press so we are dragging onto the canvas
                         .pointerInput(image) {
                             detectDragGesturesAfterLongPress(
                                 onDragStart = { start ->
@@ -89,12 +88,3 @@ fun Carousel(
         }
     }
 }
-
-fun IntRect.contains(point: Offset): Boolean {
-    val x = point.x.roundToInt()
-    val y = point.y.roundToInt()
-    return x in left..right && y in top..bottom
-}
-
-fun androidx.compose.ui.unit.Dp.toPx(density: androidx.compose.ui.unit.Density): Float =
-    with(density) { this@toPx.toPx() }

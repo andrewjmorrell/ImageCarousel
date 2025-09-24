@@ -3,23 +3,14 @@ package com.example.imagecarousel.presentation
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.calculateCentroid
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -31,13 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -57,7 +44,6 @@ import com.example.imagecarousel.R
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import androidx.compose.ui.platform.LocalContext
-import com.example.imagecarousel.presentation.models.CanvasImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,9 +85,10 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
+
+        //Load 8 images on start
         viewModel.loadImages(8)
     }
-
 
     Box(
         modifier = modifier
@@ -131,6 +118,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                         fontSize = dimensionResource(R.dimen.text_height).value.sp
                     )
 
+                    // Canvas
                     CanvasComposable(
                         modifier = Modifier
                             .weight(1f)
@@ -193,6 +181,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                                 val desiredTopLeftY = localY - frameHpx / 2f
                                 val clampedX = desiredTopLeftX.coerceIn(0f, (canvasW - frameWpx).coerceAtLeast(0f))
                                 val clampedY = desiredTopLeftY.coerceIn(0f, (canvasH - frameHpx).coerceAtLeast(0f))
+                                //Drop the image onto the canvas so save it in the viewmodel
                                 viewModel.addCanvasImage(
                                     bm = bmp,
                                     offset = Offset(clampedX, clampedY)
@@ -209,7 +198,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                     )
                 }
 
-                // Drag preview overlay (follows the finger)
+                // Drag the image
                 if (isDragging && dragBitmap != null) {
                     // Prefer exact preview size (frame size). Fallback: fixed height with aspect.
                     val fallbackHeight = dimensionResource(id = R.dimen.drag_preview_height)

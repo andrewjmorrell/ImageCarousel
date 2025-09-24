@@ -27,6 +27,7 @@ class ImageCarouselViewModel @Inject constructor(private val getImagesUseCase: G
     private val _canvasImages = mutableStateListOf<CanvasImage>()
     val canvasImages: List<CanvasImage> get() = _canvasImages
 
+    // Load the images from the use case.  Defaults to 5 but can be changed.
     fun loadImages(count: Int = 5) {
         viewModelScope.launch(Dispatchers.IO) {
             getImagesUseCase.getImages(count).onStart {
@@ -55,7 +56,7 @@ class ImageCarouselViewModel @Inject constructor(private val getImagesUseCase: G
             id = UUID.randomUUID().toString(),
             bitmap = bm,
             offset = offset,
-            userScale = userScale
+            scale = userScale
         )
     }
 
@@ -69,14 +70,7 @@ class ImageCarouselViewModel @Inject constructor(private val getImagesUseCase: G
     fun updateUserScale(id: String, userScale: Float) {
         _canvasImages.indexOfFirst { it.id == id }
             .takeIf { it >= 0 }?.let { idx ->
-                _canvasImages[idx] = _canvasImages[idx].copy(userScale = userScale)
-            }
-    }
-
-    fun updateImageTranslation(id: String, translation: Offset) {
-        _canvasImages.indexOfFirst { it.id == id }
-            .takeIf { it >= 0 }?.let { idx ->
-                _canvasImages[idx] = _canvasImages[idx].copy(imageTranslation = translation)
+                _canvasImages[idx] = _canvasImages[idx].copy(scale = userScale)
             }
     }
 }

@@ -1,9 +1,9 @@
 package com.example.imagecarousel.presentation
 
+import android.content.res.Configuration
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
@@ -56,7 +56,8 @@ fun CanvasComposable(
     Box(
         modifier = modifier
             .then(
-                if (initialOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                // Use this to keep the canvas square based upon orientation
+                if (initialOrientation == Configuration.ORIENTATION_LANDSCAPE) {
                     Modifier.fillMaxHeight()
                 } else {
                     Modifier.fillMaxWidth()
@@ -78,12 +79,13 @@ fun CanvasComposable(
                 )
             }
     ) {
+        //Place each image on the canvas
         canvasImages.forEach { item ->
             var frameOffset by remember(item.id) { mutableStateOf(item.offset) }
-            var userScale by remember(item.id) { mutableStateOf(item.userScale) }
+            var userScale by remember(item.id) { mutableStateOf(item.scale) }
 
             LaunchedEffect(item.offset) { frameOffset = item.offset }
-            LaunchedEffect(item.userScale) { userScale = item.userScale }
+            LaunchedEffect(item.scale) { userScale = item.scale }
 
             val densityLocal = LocalDensity.current
             val bmpW = item.bitmap.width.toFloat()
@@ -99,7 +101,7 @@ fun CanvasComposable(
                 w to h
             }
 
-            // Allow shrinking below base size but keep a minimum (48dp)
+            // Don't let the image shrink below 48 dp when resizing
             val minFramePx = with(densityLocal) { 48.dp.toPx() }
             val minScaleW = (minFramePx / baseFrameWpx).coerceAtMost(1f)
             val minScaleH = (minFramePx / baseFrameHpx).coerceAtMost(1f)
@@ -124,7 +126,7 @@ fun CanvasComposable(
                         var pendingOffset: Offset? = null
                         var pendingScale: Float? = null
                         awaitEachGesture {
-                            val first = awaitFirstDown(requireUnconsumed = false)
+                            //Listen for gestures on the canvas
                             do {
                                 val event = awaitPointerEvent()
                                 val pressed = event.changes.any { it.pressed }
@@ -132,8 +134,8 @@ fun CanvasComposable(
 
                                 val pointers = event.changes.count { it.pressed }
 
+                                // Two pointers so we are resizing
                                 if (pointers >= 2) {
-                                    // Pinch to resize; cannot exceed canvas bounds
                                     val oldScale = userScale
                                     val zoom = event.calculateZoom()
 
@@ -165,7 +167,7 @@ fun CanvasComposable(
                                         if (c.positionChange() != Offset.Zero) c.consume()
                                     }
                                 } else {
-                                    // Single finger: drag the frame (use current scale for clamping)
+                                    // Once pointer.  We are moving the image.
                                     val change = event.changes.first { it.pressed }
                                     val delta = change.positionChange()
                                     if (delta != Offset.Zero) {

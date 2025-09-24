@@ -8,6 +8,5 @@ data class CanvasImage(
     val id: String = UUID.randomUUID().toString(),
     val bitmap: Bitmap,
     var offset: Offset = Offset.Zero,
-    var userScale: Float = 1f,
-    var imageTranslation: Offset = Offset.Zero
+    var scale: Float = 1f
 )
