@@ -19,7 +19,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
-class CarouselViewModel @Inject constructor(private val getImagesUseCase: GetImagesUseCase): ViewModel() {
+class ImageCarouselViewModel @Inject constructor(private val getImagesUseCase: GetImagesUseCase): ViewModel() {
 
     private val _uiState = MutableStateFlow<CarouselUiState>(CarouselUiState())
     val uiState: StateFlow<CarouselUiState> = _uiState
