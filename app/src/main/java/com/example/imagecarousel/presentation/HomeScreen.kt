@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
@@ -64,7 +63,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier) {
 
-    val viewModel: CarouselViewModel = hiltViewModel<CarouselViewModel>()
+    val viewModel: ImageCarouselViewModel = hiltViewModel<ImageCarouselViewModel>()
     val state by viewModel.uiState.collectAsState()
 
     var canvasBounds by remember { mutableStateOf(IntRect(0, 0, 0, 0)) }
@@ -192,7 +191,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                             val frameWdp = with(densityLocal) { frameWpx.toDp() }
                             val frameHdp = with(densityLocal) { frameHpx.toDp() }
 
-                            // Zoom inside a fixed frame: the frame size never changes; userScale >= 1f
+                            // Zoom inside a fixed frame: the frame size never changes
                             val currentZoom = userScale.coerceIn(1f, 8f)
 
                             // Clamp helper — ensures no blank space can appear at any zoom
@@ -283,7 +282,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                                     .clip(RoundedCornerShape(1.dp))
                                     .clipToBounds()
                                     .background(Color.Black)
-                                    // Drag the whole frame by a 16dp border
+                                    // Drag the whole frame
                                     .pointerInput("frameDrag-${item.id}", draggingCanvasItemId) {
                                         if (draggingCanvasItemId != item.id) {
                                             var dragFrame = false
@@ -335,7 +334,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
-                                        .fillMaxSize() 
+                                        .fillMaxSize()
                                         .graphicsLayer {
                                             transformOrigin = TransformOrigin.Center
                                             scaleX = currentZoom
@@ -357,7 +356,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                     )
 
                     // Carousel
-                    Carousel(
+                    CarouselComposable(
                         images = state.images,
                         onStartDrag = { bmp, startOffset ->
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -415,7 +414,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                     )
                 }
 
-                // Drag preview overlay (follows the finger)
+                // Drag preview overlay
                 if (isDragging && dragBitmap != null) {
                     // Prefer exact preview size (frame size). Fallback: fixed height with aspect.
                     val fallbackHeight = dimensionResource(id = R.dimen.drag_preview_height)

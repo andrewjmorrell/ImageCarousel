@@ -34,7 +34,7 @@ import kotlin.math.roundToInt
 
 
 @Composable
-fun Carousel(
+fun CarouselComposable(
     images: List<Image>,
     onStartDrag: (bitmap: Bitmap, startOffsetInWindow: Offset) -> Unit,
     onDrag: (bitmap: Bitmap, pointerInWindow: Offset) -> Unit,
