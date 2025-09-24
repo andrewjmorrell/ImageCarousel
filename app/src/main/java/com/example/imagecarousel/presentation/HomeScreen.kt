@@ -3,9 +3,11 @@ package com.example.imagecarousel.presentation
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +34,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -44,7 +45,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
@@ -53,7 +53,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.example.imagecarousel.R
-import com.example.imagecarousel.presentation.models.CanvasImage
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -162,21 +161,15 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                         canvasImages.forEach { item ->
                             var frameOffset by remember(item.id) { mutableStateOf(item.offset) }
                             var userScale by remember(item.id) { mutableStateOf(item.userScale) }
-                            var imageTranslation by remember(item.id) { mutableStateOf(item.imageTranslation) }
-                            var frameOriginInWindow by remember(item.id) { mutableStateOf(Offset.Zero) }
 
                             LaunchedEffect(item.offset) { frameOffset = item.offset }
                             LaunchedEffect(item.userScale) { userScale = item.userScale }
-                            LaunchedEffect(item.imageTranslation) { imageTranslation = item.imageTranslation }
 
                             LaunchedEffect(frameOffset) {
                                 viewModel.updateOffset(item.id, offset = frameOffset)
                             }
                             LaunchedEffect(userScale) {
                                 viewModel.updateUserScale(item.id, userScale)
-                            }
-                            LaunchedEffect(imageTranslation) {
-                                viewModel.updateImageTranslation(item.id, imageTranslation)
                             }
 
                             val densityLocal = LocalDensity.current
@@ -187,146 +180,83 @@ fun HomeScreen(modifier: Modifier = Modifier) {
 
                             val initialFitFraction = 0.6f
                             val scaleToFitCanvas = minOf(canvasW / bmpW, canvasH / bmpH, 1f) * initialFitFraction
-                            val frameWpx = (bmpW * scaleToFitCanvas).coerceAtLeast(1f)
-                            val frameHpx = (bmpH * scaleToFitCanvas).coerceAtLeast(1f)
+                            val baseFrameWpx = (bmpW * scaleToFitCanvas).coerceAtLeast(1f)
+                            val baseFrameHpx = (bmpH * scaleToFitCanvas).coerceAtLeast(1f)
+
+                            // Allow shrinking well below the base size, but keep a sane visual minimum (e.g., 48dp)
+                            val minFramePx = with(densityLocal) { 48.dp.toPx() }
+                            val minScaleW = (minFramePx / baseFrameWpx).coerceAtMost(1f)
+                            val minScaleH = (minFramePx / baseFrameHpx).coerceAtMost(1f)
+                            val minScale = maxOf(minScaleW, minScaleH)
+
+                            val frameScale = userScale.coerceIn(minScale, 8f)
+                            val frameWpx = baseFrameWpx * frameScale
+                            val frameHpx = baseFrameHpx * frameScale
                             val frameWdp = with(densityLocal) { frameWpx.toDp() }
                             val frameHdp = with(densityLocal) { frameHpx.toDp() }
-
-                            // Zoom inside a fixed frame: the frame size never changes; userScale >= 1f
-                            val currentZoom = userScale.coerceIn(1f, 8f)
-
-                            // Clamp helper — ensures no blank space can appear at any zoom
-                            fun clampPanWithZoom(p: Offset, zoom: Float): Offset {
-                                val contentW = frameWpx * zoom
-                                val contentH = frameHpx * zoom
-                                val maxPanX = ((contentW - frameWpx) / 2f).coerceAtLeast(0f)
-                                val maxPanY = ((contentH - frameHpx) / 2f).coerceAtLeast(0f)
-                                return Offset(
-                                    x = p.x.coerceIn(-maxPanX, maxPanX),
-                                    y = p.y.coerceIn(-maxPanY, maxPanY)
-                                )
-                            }
-
-                            // Keep existing translation valid for the current zoom
-                            imageTranslation = clampPanWithZoom(imageTranslation, currentZoom)
 
                             Box(
                                 modifier = Modifier
                                     .size(width = frameWdp, height = frameHdp)
                                     .offset { IntOffset(frameOffset.x.roundToInt(), frameOffset.y.roundToInt()) }
-                                    .onGloballyPositioned { coords ->
-                                        frameOriginInWindow = coords.positionInWindow()
-                                    }
                                     .graphicsLayer { alpha = if (draggingCanvasItemId == item.id) 0f else 1f }
-                                    // Long-press drag to move image from canvas (like carousel)
-                                    .pointerInput("canvasLongPressDrag-${item.id}") {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = { start ->
-                                                // Show overlay while dragging; keep item in list to avoid cancelling gesture
-                                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                                draggingCanvasItemId = item.id
-                                                dragBitmap = item.bitmap
-                                                isDragging = true
-                                                // Set the drag offset to the touch point in window coordinates
-                                                dragOffset = frameOriginInWindow + start
-                                                // Make the preview match the on-canvas frame size
-                                                dragPreviewWidthDp = with(densityLocal) { frameWpx.toDp() }
-                                                dragPreviewHeightDp = with(densityLocal) { frameHpx.toDp() }
-                                            },
-                                            onDrag = { change, _ ->
-                                                // absolute pointer in window during drag
-                                                dragOffset = frameOriginInWindow + change.position
-                                                change.consume()
-                                            },
-                                            onDragEnd = {
-                                                val bmp = dragBitmap
-                                                if (bmp != null && canvasBounds.contains(dragOffset)) {
-                                                    val localX = dragOffset.x - canvasBounds.left
-                                                    val localY = dragOffset.y - canvasBounds.top
-                                                    val bmpW2 = bmp.width.toFloat()
-                                                    val bmpH2 = bmp.height.toFloat()
-                                                    val canvasW = canvasBounds.width.toFloat()
-                                                    val canvasH = canvasBounds.height.toFloat()
-                                                    val initialFitFraction = 0.6f
-                                                    val scaleToFitCanvas = minOf(canvasW / bmpW2, canvasH / bmpH2, 1f) * initialFitFraction
-                                                    val frameWpx2 = (bmpW2 * scaleToFitCanvas).coerceAtLeast(1f)
-                                                    val frameHpx2 = (bmpH2 * scaleToFitCanvas).coerceAtLeast(1f)
-                                                    val desiredTopLeftX = localX - frameWpx2 / 2f
-                                                    val desiredTopLeftY = localY - frameHpx2 / 2f
-                                                    val clampedX = desiredTopLeftX.coerceIn(0f, (canvasW - frameWpx2).coerceAtLeast(0f))
-                                                    val clampedY = desiredTopLeftY.coerceIn(0f, (canvasH - frameHpx2).coerceAtLeast(0f))
-
-                                                    // Update the existing item's offset
-                                                    viewModel.updateOffset(item.id, Offset(clampedX, clampedY))
-
-                                                    // Bring this item to front by moving it to the end of the list
-                                                    val list = viewModel.canvasImages
-                                                    if (list is MutableList<*>) {
-                                                        @Suppress("UNCHECKED_CAST")
-                                                        val mutable = list as MutableList<CanvasImage>
-                                                        val idx = mutable.indexOfFirst { it.id == item.id }
-                                                        if (idx >= 0 && idx < mutable.size - 1) {
-                                                            val moved = mutable.removeAt(idx)
-                                                            mutable.add(moved)
-                                                        }
-                                                    }
-                                                }
-                                                // reset drag flags
-                                                draggingCanvasItemId = null
-                                                isDragging = false
-                                                dragBitmap = null
-                                                dragPreviewWidthDp = null
-                                                dragPreviewHeightDp = null
-                                            }
-                                        )
-                                    }
+                                    // (Removed long-press drag to move image from canvas)
                                     .clip(RoundedCornerShape(1.dp))
                                     .clipToBounds()
                                     .background(Color.Black)
-                                    // Drag the whole frame by a 16dp border
-                                    .pointerInput("frameDrag-${item.id}", draggingCanvasItemId) {
-                                        if (draggingCanvasItemId != item.id) {
-                                            var dragFrame = false
-                                            detectDragGestures(
-                                                onDragStart = { start ->
-                                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                                    val borderPx = with(densityLocal) { 16.dp.toPx() }
-                                                    dragFrame = start.x <= borderPx || start.y <= borderPx ||
-                                                            start.x >= frameWpx - borderPx || start.y >= frameHpx - borderPx
-                                                },
-                                                onDrag = { change, dragAmount ->
-                                                    if (dragFrame) {
-                                                        val new = frameOffset + dragAmount
-                                                        val maxX = (canvasBounds.width - frameWpx).coerceAtLeast(0f)
-                                                        val maxY = (canvasBounds.height - frameHpx).coerceAtLeast(0f)
+                                    .pointerInput("frameDragOrPinch-${item.id}") {
+                                        awaitEachGesture {
+                                            // Wait for first touch; don't require unconsumed so we always get it
+                                            do {
+                                                val event = awaitPointerEvent()
+                                                val pressed = event.changes.any { it.pressed }
+                                                if (!pressed) break
+
+                                                val pointers = event.changes.count { it.pressed }
+
+                                                if (pointers >= 2) {
+                                                    // Multi-touch: pinch to resize the frame
+                                                    val oldScale = userScale
+                                                    val zoom = event.calculateZoom()
+                                                    val newScale = (oldScale * zoom).coerceIn(minScale, 8f)
+                                                    val k = if (oldScale == 0f) 1f else newScale / oldScale
+
+                                                    val centroid = event.calculateCentroid(useCurrent = true)
+                                                    val deltaTopLeft = centroid * (1f - k)
+                                                    val unclamped = frameOffset + deltaTopLeft
+
+                                                    val newW = baseFrameWpx * newScale
+                                                    val newH = baseFrameHpx * newScale
+                                                    val maxX = (canvasBounds.width - newW).coerceAtLeast(0f)
+                                                    val maxY = (canvasBounds.height - newH).coerceAtLeast(0f)
+
+                                                    frameOffset = Offset(
+                                                        x = unclamped.x.coerceIn(0f, maxX),
+                                                        y = unclamped.y.coerceIn(0f, maxY)
+                                                    )
+                                                    userScale = newScale
+
+                                                    event.changes.forEach { c -> if (c.positionChange() != Offset.Zero) c.consume() }
+                                                } else {
+                                                    // Single finger: drag the frame
+                                                    val change = event.changes.first { it.pressed }
+                                                    val delta = change.positionChange()
+                                                    if (delta != Offset.Zero) {
+                                                        val new = frameOffset + delta
+                                                        // Recompute current frame size from the latest scale to avoid stale clamps
+                                                        val currentScale = userScale.coerceIn(minScale, 8f)
+                                                        val currentFrameW = baseFrameWpx * currentScale
+                                                        val currentFrameH = baseFrameHpx * currentScale
+                                                        val maxX = (canvasBounds.width - currentFrameW).coerceAtLeast(0f)
+                                                        val maxY = (canvasBounds.height - currentFrameH).coerceAtLeast(0f)
                                                         frameOffset = Offset(
                                                             new.x.coerceIn(0f, maxX),
                                                             new.y.coerceIn(0f, maxY)
                                                         )
                                                         change.consume()
                                                     }
-                                                },
-                                                onDragEnd = { dragFrame = false }
-                                            )
-                                        }
-                                    }
-                                    // Pinch to zoom + pan the IMAGE inside the frame
-                                    .pointerInput(item.id, draggingCanvasItemId) {
-                                        if (draggingCanvasItemId != item.id) {
-                                            detectTransformGestures { centroid, pan, zoom, _ ->
-                                                val oldZoom = userScale
-                                                val newZoom = (oldZoom * zoom).coerceIn(1f, 8f)
-                                                val k = newZoom / oldZoom
-
-                                                val frameCenter = Offset(frameWpx / 2f, frameHpx / 2f)
-                                                val newTranslation = Offset(
-                                                    x = k * imageTranslation.x - (k - 1f) * (centroid.x - frameCenter.x) + pan.x,
-                                                    y = k * imageTranslation.y - (k - 1f) * (centroid.y - frameCenter.y) + pan.y
-                                                )
-
-                                                imageTranslation = clampPanWithZoom(newTranslation, newZoom)
-                                                userScale = newZoom
-                                            }
+                                                }
+                                            } while (true)
                                         }
                                     }
                             ) {
@@ -335,14 +265,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
-                                        .fillMaxSize() 
-                                        .graphicsLayer {
-                                            transformOrigin = TransformOrigin.Center
-                                            scaleX = currentZoom
-                                            scaleY = currentZoom
-                                            translationX = imageTranslation.x
-                                            translationY = imageTranslation.y
-                                        }
+                                        .fillMaxSize()
                                 )
                             }
                         }

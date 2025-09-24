@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">Image Carousel</string>
-    <string name="canvas_text">Long press to move image. Zoom and pan enabled.</string>
+    <string name="canvas_text">Zoom and pan enabled.</string>
     <string name="carousel_text">Long press to drag image to canvas.</string>
 </resources>
